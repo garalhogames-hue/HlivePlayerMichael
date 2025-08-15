@@ -185,33 +185,15 @@ export default function RadioPlayer() {
         audioRef.current.pause()
         setIsPlaying(false)
       } else {
-        // Pause first to ensure clean state
-        audioRef.current.pause()
-        
-        // Reset current time to clear any buffer
-        audioRef.current.currentTime = 0
-        
-        // Load to refresh the stream
+        // Always load fresh stream when starting playback
         audioRef.current.load()
-        
-        // Play the fresh stream
         await audioRef.current.play()
         setIsPlaying(true)
         lastRestartTimeRef.current = Date.now()
       }
     } catch (error) {
       console.error("Audio playback error:", error)
-      // Try fallback approach
-      try {
-        if (audioRef.current) {
-          audioRef.current.src = audioRef.current.src // Force reload
-          await audioRef.current.play()
-          setIsPlaying(true)
-        }
-      } catch (fallbackError) {
-        console.error("Fallback also failed:", fallbackError)
-        setIsPlaying(false)
-      }
+      setIsPlaying(false)
     }
   }
 
