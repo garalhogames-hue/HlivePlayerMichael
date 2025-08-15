@@ -177,35 +177,65 @@ export default function RadioPlayer() {
     }
   }, [volume])
 
-  const handlePlayPause = async () => {
-    if (!audioRef.current) return
+  const STREAM_URL = "https://sonicpanel.oficialserver.com:8342/;stream.mp3"
 
-    try {
-      if (isPlaying) {
-        audioRef.current.pause()
-        setIsPlaying(false)
-      } else {
-        // Force a fresh connection by resetting the source with a cache buster
-        const streamUrl = "https://sonicpanel.oficialserver.com:8342/;stream.mp3"
-        const cacheBuster = `?cb=${Date.now()}`
-        audioRef.current.src = streamUrl + cacheBuster
-        
-        // Load the fresh stream
-        audioRef.current.load()
-        
-        // Small delay to ensure load is processed
-        await new Promise(resolve => setTimeout(resolve, 100))
-        
-        // Start playback from the live point
-        await audioRef.current.play()
-        setIsPlaying(true)
-        lastRestartTimeRef.current = Date.now()
-      }
-    } catch (error) {
-      console.error("Audio playback error:", error)
-      setIsPlaying(false)
+const waitForCanPlay = (audio: HTMLAudioElement, timeoutMs = 4000) =>
+  new Promise<void>((resolve, reject) => {
+    let done = false
+    const ok = () => {
+      if (done) return
+      done = true
+      audio.removeEventListener("canplay", ok)
+      clearTimeout(t)
+      resolve()
     }
+    const t = setTimeout(() => {
+      if (done) return
+      done = true
+      audio.removeEventListener("canplay", ok)
+      resolve()
+    }, timeoutMs)
+    audio.addEventListener("canplay", ok, { once: true })
+  })
+
+let playLock = false
+
+const handlePlayPause = async () => {
+  if (!audioRef.current || playLock) return
+  const audio = audioRef.current
+
+  try {
+    playLock = true
+
+    if (isPlaying) {
+      audio.pause()
+      setIsPlaying(false)
+      return
+    }
+
+    const freshUrl = `${STREAM_URL}?t=${Date.now()}`
+    audio.pause()
+    audio.src = freshUrl
+    audio.load()
+
+    await waitForCanPlay(audio)
+
+    ;(audio as any).playsInline = true
+
+    const p = audio.play()
+    if (p && typeof p.then === "function") {
+      await p
+    }
+
+    setIsPlaying(true)
+    lastRestartTimeRef.current = Date.now()
+  } catch (error) {
+    console.error("Audio playback error:", error)
+    setIsPlaying(false)
+  } finally {
+    playLock = false
   }
+}
 
   const handleVolumeChange = (newVolume: number) => {
     setVolume(newVolume)
@@ -230,6 +260,7 @@ export default function RadioPlayer() {
         src="https://sonicpanel.oficialserver.com:8342/;stream.mp3" 
         preload="none"
         crossOrigin="anonymous"
+        playsInline
       />
 
       <motion.div
