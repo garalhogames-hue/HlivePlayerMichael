@@ -185,11 +185,16 @@ export default function RadioPlayer() {
         audioRef.current.pause()
         setIsPlaying(false)
       } else {
-        // Reset the source to force fresh stream from live point
-        audioRef.current.src = "https://sonicpanel.oficialserver.com:8342/;stream.mp3"
+        // Force a fresh connection by resetting the source with a cache buster
+        const streamUrl = "https://sonicpanel.oficialserver.com:8342/;stream.mp3"
+        const cacheBuster = `?cb=${Date.now()}`
+        audioRef.current.src = streamUrl + cacheBuster
         
         // Load the fresh stream
         audioRef.current.load()
+        
+        // Small delay to ensure load is processed
+        await new Promise(resolve => setTimeout(resolve, 100))
         
         // Start playback from the live point
         await audioRef.current.play()
