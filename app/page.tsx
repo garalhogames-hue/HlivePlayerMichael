@@ -14,16 +14,26 @@ export default function RadioPlayer() {
   const [isPlaying, setIsPlaying] = useState(false)
   const [volume, setVolume] = useState(0.7)
   const [isLoading, setIsLoading] = useState(true)
+  const [isAudioLoading, setIsAudioLoading] = useState(false)
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
   const audioRef = useRef<HTMLAudioElement>(null)
 
-  // Fetch radio status
+  const restartAudioStream = async () => {
+    if (!audioRef.current || !isPlaying) return
+
+    try {
+      audioRef.current.load()
+      await audioRef.current.play()
+    } catch (error) {
+      console.error("Failed to restart audio stream:", error)
+    }
+  }
+
   const updateRadioStatus = async () => {
     try {
       const status = await fetchRadioStatus()
       setRadioStatus(status)
 
-      // Fetch avatar if there's a DJ
       if (status.locutor && status.locutor !== "Radio Habblive" && status.locutor.trim() !== "") {
         try {
           const avatar = await fetchHabboAvatar(status.locutor)
@@ -41,15 +51,64 @@ export default function RadioPlayer() {
     }
   }
 
-  // Initialize audio and status
   useEffect(() => {
     updateRadioStatus()
-    const interval = setInterval(updateRadioStatus, 10000) // Update every 10 seconds
+    const interval = setInterval(updateRadioStatus, 10000)
 
     return () => clearInterval(interval)
   }, [])
 
-  // Handle audio volume changes
+  useEffect(() => {
+    const restartInterval = setInterval(
+      () => {
+        restartAudioStream()
+      },
+      10 * 60 * 1000,
+    )
+
+    return () => clearInterval(restartInterval)
+  }, [isPlaying])
+
+  useEffect(() => {
+    const audio = audioRef.current
+    if (!audio) return
+
+    const handleCanPlay = () => {
+      setIsAudioLoading(false)
+    }
+
+    const handleStalled = () => {
+      if (isPlaying) {
+        restartAudioStream()
+      }
+    }
+
+    const handleError = () => {
+      if (isPlaying) {
+        restartAudioStream()
+      }
+      setIsAudioLoading(false)
+    }
+
+    const handleEnded = () => {
+      if (isPlaying) {
+        restartAudioStream()
+      }
+    }
+
+    audio.addEventListener("canplay", handleCanPlay)
+    audio.addEventListener("stalled", handleStalled)
+    audio.addEventListener("error", handleError)
+    audio.addEventListener("ended", handleEnded)
+
+    return () => {
+      audio.removeEventListener("canplay", handleCanPlay)
+      audio.removeEventListener("stalled", handleStalled)
+      audio.removeEventListener("error", handleError)
+      audio.removeEventListener("ended", handleEnded)
+    }
+  }, [isPlaying])
+
   useEffect(() => {
     if (audioRef.current) {
       audioRef.current.volume = volume
@@ -64,11 +123,17 @@ export default function RadioPlayer() {
         audioRef.current.pause()
         setIsPlaying(false)
       } else {
+        setIsAudioLoading(true)
+
+        audioRef.current.load()
         await audioRef.current.play()
         setIsPlaying(true)
+
+        setIsAudioLoading(false)
       }
     } catch (error) {
       console.error("Audio playback error:", error)
+      setIsAudioLoading(false)
     }
   }
 
@@ -126,6 +191,7 @@ export default function RadioPlayer() {
 
             <PlayerControls
               isPlaying={isPlaying}
+              isAudioLoading={isAudioLoading}
               volume={volume}
               onPlayPause={handlePlayPause}
               onVolumeChange={handleVolumeChange}
