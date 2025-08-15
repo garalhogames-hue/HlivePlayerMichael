@@ -177,29 +177,49 @@ export default function RadioPlayer() {
     }
   }, [volume])
 
-  const STREAM_URL = "https://sonicpanel.oficialserver.com:8342/;stream.mp3"
+  const handlePlayPause = async () => {
+    if (!audioRef.current) return
 
-const waitForCanPlay = (audio: HTMLAudioElement, timeoutMs = 4000) =>
-  new Promise<void>((resolve, reject) => {
+    try {
+      if (isPlaying) {
+        audioRef.current.pause()
+        setIsPlaying(false)
+      } else {
+        // Always load fresh stream when starting playback
+        audioRef.current.load()
+        await audioRef.current.play()
+        setIsPlaying(true)
+        lastRestartTimeRef.current = Date.now()
+      }
+    } catch (error) {
+      console.error("Audio playback error:", error)
+      setIsPlaying(false)
+    }
+  }
+
+const STREAM_URL = "https://sonicpanel.oficialserver.com:8342/;stream.mp3"
+
+// Prefer 'loadedmetadata' on Chrome for streams (canplay may not always fire reliably for live)
+const waitForLoadedMeta = (audio: HTMLAudioElement, timeoutMs = 3000) =>
+  new Promise<void>((resolve) => {
     let done = false
     const ok = () => {
       if (done) return
       done = true
-      audio.removeEventListener("canplay", ok)
+      audio.removeEventListener("loadedmetadata", ok)
       clearTimeout(t)
       resolve()
     }
     const t = setTimeout(() => {
       if (done) return
       done = true
-      audio.removeEventListener("canplay", ok)
+      audio.removeEventListener("loadedmetadata", ok)
       resolve()
     }, timeoutMs)
-    audio.addEventListener("canplay", ok, { once: true })
+    audio.addEventListener("loadedmetadata", ok, { once: true })
   })
 
 let playLock = false
-
 const handlePlayPause = async () => {
   if (!audioRef.current || playLock) return
   const audio = audioRef.current
@@ -213,31 +233,53 @@ const handlePlayPause = async () => {
       return
     }
 
-    const freshUrl = `${STREAM_URL}?t=${Date.now()}`
+    // Reset stream cleanly (no cache-busting for Chrome)
     audio.pause()
-    audio.src = freshUrl
+    // Rebuild <source> list to hint MIME to Chrome
+    while (audio.firstChild) audio.removeChild(audio.firstChild)
+    const s = document.createElement("source")
+    s.src = STREAM_URL
+    s.type = "audio/aac" // aac/aacp stream hint
+    audio.appendChild(s)
+
     audio.load()
-
-    await waitForCanPlay(audio)
-
     ;(audio as any).playsInline = true
 
-    const p = audio.play()
+    // Wait briefly for metadata then try to play
+    await waitForLoadedMeta(audio)
+
+    let p = audio.play()
     if (p && typeof p.then === "function") {
       await p
     }
 
     setIsPlaying(true)
     lastRestartTimeRef.current = Date.now()
-  } catch (error) {
-    console.error("Audio playback error:", error)
-    setIsPlaying(false)
+  } catch (err: any) {
+    console.error("Audio playback error (Chrome):", err?.name || err, err?.message || "")
+    // Fallback: try without <source> (set src directly)
+    try {
+      audio.pause()
+      while (audio.firstChild) audio.removeChild(audio.firstChild)
+      audio.removeAttribute("src")
+      audio.src = STREAM_URL
+      audio.load()
+      ;(audio as any).playsInline = true
+      const p2 = audio.play()
+      if (p2 && typeof p2.then === "function") await p2
+      setIsPlaying(true)
+      return
+    } catch (err2) {
+      console.error("Audio playback fallback failed:", err2)
+      setIsPlaying(false)
+    }
   } finally {
     playLock = false
   }
 }
 
-  const handleVolumeChange = (newVolume: number) => {
+
+const handleVolumeChange = (newVolume: number) => {
     setVolume(newVolume)
   }
 
@@ -257,11 +299,11 @@ const handlePlayPause = async () => {
     <div className="min-h-screen flex flex-col relative">
       <audio 
         ref={audioRef} 
-        src="https://sonicpanel.oficialserver.com:8342/;stream.mp3" 
         preload="none"
         crossOrigin="anonymous"
         playsInline
-      />
+      >
+        <source src="https://sonicpanel.oficialserver.com:8342/;stream.mp3" type="audio/aac" />
 
       <motion.div
         className="hidden lg:block fixed inset-0 pointer-events-none z-20"
@@ -279,7 +321,9 @@ const handlePlayPause = async () => {
       </motion.div>
 
       <div className="relative z-10">
-        <Header />
+        </audio>
+
+      <Header />
 
         <main className="flex-1 container mx-auto px-4 py-8 max-w-2xl">
           <div className="space-y-6">
