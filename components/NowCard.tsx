@@ -4,7 +4,6 @@ import { motion } from "framer-motion"
 import Avatar from "./Avatar"
 import LoveButton from "./LoveButton"
 import Listeners from "./Listeners"
-import DailyHeartButton from "./DailyHeartButton"
 import type { RadioStatus } from "@/lib/types"
 
 interface NowCardProps {
@@ -52,10 +51,7 @@ export default function NowCard({ radioStatus, avatarUrl }: NowCardProps) {
         </div>
 
         <div className="flex items-center justify-center gap-6">
-          <div className="flex items-center gap-2">
-            <Listeners count={radioStatus?.unicos || 0} />
-            <DailyHeartButton />
-          </div>
+          <Listeners count={radioStatus?.unicos || 0} />
 
           {isLive && <LoveButton djName={radioStatus.locutor} />}
         </div>
