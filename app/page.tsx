@@ -185,8 +185,13 @@ export default function RadioPlayer() {
         audioRef.current.pause()
         setIsPlaying(false)
       } else {
-        // Always load fresh stream when starting playback
+        // Reset the source to force fresh stream from live point
+        audioRef.current.src = "https://sonicpanel.oficialserver.com:8342/;stream.mp3"
+        
+        // Load the fresh stream
         audioRef.current.load()
+        
+        // Start playback from the live point
         await audioRef.current.play()
         setIsPlaying(true)
         lastRestartTimeRef.current = Date.now()
