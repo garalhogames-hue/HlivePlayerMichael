@@ -16,6 +16,8 @@ export default function RadioPlayer() {
   const [isLoading, setIsLoading] = useState(true)
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
   const audioRef = useRef<HTMLAudioElement>(null)
+  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const lastRestartTimeRef = useRef<number>(Date.now())
 
   // Fetch radio status
   const updateRadioStatus = async () => {
@@ -41,6 +43,53 @@ export default function RadioPlayer() {
     }
   }
 
+  // Function to restart the audio stream
+  const restartAudioStream = async () => {
+    if (!audioRef.current) return
+
+    try {
+      console.log("Restarting audio stream...")
+      const wasPlaying = isPlaying
+      
+      // Stop current playback
+      audioRef.current.pause()
+      
+      // Reset the audio element
+      audioRef.current.load()
+      
+      // If it was playing, start playing again
+      if (wasPlaying) {
+        try {
+          await audioRef.current.play()
+          setIsPlaying(true)
+        } catch (error) {
+          console.error("Error restarting playback:", error)
+          setIsPlaying(false)
+        }
+      }
+      
+      lastRestartTimeRef.current = Date.now()
+    } catch (error) {
+      console.error("Error in restartAudioStream:", error)
+    }
+  }
+
+  // Handle reconnection with debounce
+  const handleReconnect = () => {
+    // Clear any existing timeout
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current)
+    }
+
+    // Debounce reconnection attempts to avoid too many rapid reconnects
+    reconnectTimeoutRef.current = setTimeout(() => {
+      if (isPlaying) {
+        console.log("Connection issue detected, attempting to reconnect...")
+        restartAudioStream()
+      }
+    }, 1000)
+  }
+
   // Initialize audio and status
   useEffect(() => {
     updateRadioStatus()
@@ -48,6 +97,78 @@ export default function RadioPlayer() {
 
     return () => clearInterval(interval)
   }, [])
+
+  // Setup audio event listeners for connection issues
+  useEffect(() => {
+    const audio = audioRef.current
+    if (!audio) return
+
+    // Event handlers for connection issues
+    const handleStalled = () => {
+      console.log("Audio stalled, attempting to reconnect...")
+      handleReconnect()
+    }
+
+    const handleError = (e: Event) => {
+      console.error("Audio error:", e)
+      handleReconnect()
+    }
+
+    const handleEnded = () => {
+      console.log("Audio ended unexpectedly, attempting to reconnect...")
+      handleReconnect()
+    }
+
+    const handleWaiting = () => {
+      console.log("Audio waiting for data...")
+      // Only reconnect if we've been waiting for more than 5 seconds
+      const waitTimeout = setTimeout(() => {
+        if (isPlaying) {
+          console.log("Audio stuck waiting, attempting to reconnect...")
+          handleReconnect()
+        }
+      }, 5000)
+
+      // Clear timeout if playing resumes
+      const handlePlaying = () => {
+        clearTimeout(waitTimeout)
+      }
+      
+      audio.addEventListener("playing", handlePlaying, { once: true })
+    }
+
+    // Add event listeners
+    audio.addEventListener("stalled", handleStalled)
+    audio.addEventListener("error", handleError)
+    audio.addEventListener("ended", handleEnded)
+    audio.addEventListener("waiting", handleWaiting)
+
+    // Cleanup
+    return () => {
+      audio.removeEventListener("stalled", handleStalled)
+      audio.removeEventListener("error", handleError)
+      audio.removeEventListener("ended", handleEnded)
+      audio.removeEventListener("waiting", handleWaiting)
+      
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current)
+      }
+    }
+  }, [isPlaying])
+
+  // Periodic restart to prevent delay accumulation (every 10 minutes)
+  useEffect(() => {
+    const RESTART_INTERVAL = 10 * 60 * 1000 // 10 minutes in milliseconds
+
+    const intervalId = setInterval(() => {
+      if (isPlaying) {
+        console.log("Performing periodic stream restart to prevent delay...")
+        restartAudioStream()
+      }
+    }, RESTART_INTERVAL)
+
+    return () => clearInterval(intervalId)
+  }, [isPlaying])
 
   // Handle audio volume changes
   useEffect(() => {
@@ -64,11 +185,15 @@ export default function RadioPlayer() {
         audioRef.current.pause()
         setIsPlaying(false)
       } else {
+        // Always load fresh stream when starting playback
+        audioRef.current.load()
         await audioRef.current.play()
         setIsPlaying(true)
+        lastRestartTimeRef.current = Date.now()
       }
     } catch (error) {
       console.error("Audio playback error:", error)
+      setIsPlaying(false)
     }
   }
 
@@ -90,7 +215,12 @@ export default function RadioPlayer() {
 
   return (
     <div className="min-h-screen flex flex-col relative">
-      <audio ref={audioRef} src="https://sonicpanel.oficialserver.com/8342/;" preload="none" />
+      <audio 
+        ref={audioRef} 
+        src="https://sonicpanel.oficialserver.com:8342/;stream.mp3" 
+        preload="none"
+        crossOrigin="anonymous"
+      />
 
       <motion.div
         className="hidden lg:block fixed inset-0 pointer-events-none z-20"
