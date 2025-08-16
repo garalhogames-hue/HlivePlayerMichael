@@ -1,7 +1,7 @@
 import type { RadioStatus, HabboUser } from "./types"
 
 export async function fetchRadioStatus(): Promise<RadioStatus> {
-  const response = await fetch("/api/status")
+  const response = await fetch("/api/status", { cache: "no-store" })
   if (!response.ok) {
     throw new Error("Failed to fetch radio status")
   }
@@ -13,7 +13,7 @@ export async function fetchHabboAvatar(nick: string): Promise<HabboUser> {
     const avatarUrl = `https://habblive.in/imager.php?user=${encodeURIComponent(nick)}&action=wav&size=l&head_direction=3&direction=3&gesture=sml`
     return { avatar: avatarUrl }
   } catch (error) {
-    console.error("[v0] Failed to generate avatar URL:", error)
+    console.error("Failed to generate avatar URL:", error)
     return { avatar: null }
   }
 }

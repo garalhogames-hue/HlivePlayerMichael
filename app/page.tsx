@@ -204,3 +204,10 @@ export default function RadioPlayer() {
     </div>
   )
 }
+// ...código acima inalterado...
+return (
+  <div className="min-h-screen flex flex-col relative">
+    {/* antes apontava para http(s)://sonicpanel.../8342/; */}
+    <audio ref={audioRef} src="/api/stream" preload="none" />
+
+    {/* resto da página */}
