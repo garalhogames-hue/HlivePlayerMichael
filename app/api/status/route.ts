@@ -2,7 +2,8 @@ import { NextResponse } from "next/server"
 
 export async function GET() {
   try {
-    const response = await fetch("https://radiohabb.live/api/status", {
+    const response = await fetch("
+http://sonicpanel.oficialserver.com:8342/", {
       headers: {
         "User-Agent": "RadioHabblive-Player/1.0",
       },
